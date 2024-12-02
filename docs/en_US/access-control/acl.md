@@ -1,6 +1,7 @@
 # Access Control List
 
 Access Control List (ACL) provides a more fine-grained approach to authorization. It defines rules that are matched from top to bottom. Once a rule is matched, its permission is applied, and the remaining rules are ignored.
+If no rules match, the default permission of `no_match` in [the authentication configuration](introduction.md#authentication-configuration) is applied.
 
 ## Configuration Items
 
