@@ -3822,25 +3822,29 @@ put_mqtt_bridge_switch(http_msg *msg, const char *name)
 		    conf_data, item, "bridge_switch", bridge_switch, rv);
 		if (rv == 0) {
 			found = true;
+			log_info("processing bridge switch %d for %s",bridge_switch, name);
 			nng_dialer *dialer = node->dialer;
-			if (node->enable == false && bridge_switch == true) {
+			if (bridge_switch == true) {
 				nng_dialer_set_bool(*dialer, NNG_OPT_BRIDGE_SET_EP_CLOSED, false);
-				if (nng_dialer_start(*dialer, NNG_FLAG_NONBLOCK) != 0) {
-					log_warn("turn on bridge %s failed!", name);
-					found = false;
+				if ((rv = nng_dialer_start(*dialer, NNG_FLAG_NONBLOCK)) != 0) {
+					log_warn("turn on bridge %s failed! %d", name, rv);
+				} else {
+					log_warn("successfully turn on bridge %s", name);
+					node->enable = bridge_switch;
 				}
-			} else if (node->enable == true && bridge_switch == false) {
+			} else if (bridge_switch == false) {
 				nng_dialer_set_bool(*dialer, NNG_OPT_BRIDGE_SET_EP_CLOSED, true);
-				if (nng_dialer_off(*dialer) != 0) {
-					log_warn("turn off bridge %s failed!", name);
-					found = false;
+				if ((rv = nng_dialer_off(*dialer)) != 0) {
+					log_warn("turn off bridge %s failed! %d", name, rv);
+				} else {
+					log_warn("successfully turn off bridge %s", name);
+					node->enable = bridge_switch;
 				}
 			}
-			node->enable = bridge_switch;
 		}
 	}
 
-	if (found) {
+	if (found && rv == 0) {
 		cJSON *res_obj = cJSON_CreateObject();
 		cJSON_AddNumberToObject(res_obj, "code", SUCCEED);
 		char *dest = cJSON_PrintUnformatted(res_obj);
@@ -3852,10 +3856,21 @@ put_mqtt_bridge_switch(http_msg *msg, const char *name)
 		cJSON_Delete(res_obj);
 		cJSON_Delete(req);
 		return res;
-	} else {
+	} else if (rv == NNG_ESTATE) {
 		cJSON_Delete(req);
+		log_warn("change %s bridge state failed!", name);
 		return error_response(
-		    msg, NNG_HTTP_STATUS_NOT_FOUND, CLIENT_IS_OFFLINE);
+		    msg, NNG_HTTP_STATUS_BAD_REQUEST, REQ_PARAM_ERROR);
+	} else if (rv != 0){
+		cJSON_Delete(req);
+		log_warn("change %s bridge is failed!", name);
+		return error_response(
+		    msg, NNG_HTTP_STATUS_INTERNAL_SERVER_ERROR, rv);
+	} else if (!found) {
+		cJSON_Delete(req);
+		log_warn("no such %s bridge is found!", name);
+		return error_response(
+		    msg, NNG_HTTP_STATUS_NO_CONTENT, REQ_PARAM_ERROR);
 	}
 }
 
